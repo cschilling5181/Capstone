@@ -56,10 +56,14 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+void delay_us (uint16_t us);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define CSpin_Pin GPIO_PIN_0
+#define CSpin_GPIO_Port GPIOB
+#define CEpin_Pin GPIO_PIN_1
+#define CEpin_GPIO_Port GPIOB
 #define C0_In_Pin GPIO_PIN_7
 #define C0_In_GPIO_Port GPIOE
 #define C1_In_Pin GPIO_PIN_8

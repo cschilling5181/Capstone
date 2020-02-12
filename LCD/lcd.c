@@ -6,7 +6,7 @@
  */
 
 #include "lcd.h"
-//#include "dwt_stm32_delay.h"
+#include "main.h"
 
 const uint8_t ROW_16[] = {0x00, 0x40, 0x10, 0x50};
 const uint8_t ROW_20[] = {0x00, 0x40, 0x14, 0x54};
@@ -165,7 +165,7 @@ void lcd_write(Lcd_HandleTypeDef * lcd, uint8_t data, uint8_t len)
 	}
 
 	HAL_GPIO_WritePin(lcd->en_port, lcd->en_pin, 1);
+	//delay_us(1000);
 	HAL_Delay(1);
-	//DWT_Delay_us(2000);
 	HAL_GPIO_WritePin(lcd->en_port, lcd->en_pin, 0); 		// Data receive on falling edge
 }
