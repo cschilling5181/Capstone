@@ -91,17 +91,21 @@ int main(void)
 	/* USER CODE BEGIN 1 */
 	uint8_t returnKey = 16;
 	uint8_t menuState = 1;
-	bool set = false;
 	uint8_t dutyCycles[3];
 
+	uint32_t ringDelay = 0;
+	bool set = false;
+
 	uint64_t RxPipeAddr = 0x11223344AA;
-	char AckResponse[32] = "Professor Ack";
-	char RxBuffer[50];
+	uint64_t TxPipeAddr = 0x99887766BB;
+	char RxData[34];
+	char TxData[32];
 
 	char userStatus[] = "Available";
-	char userName[18] = { 0 };
-	char alphabets[2][26] = { { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v','w', 'x', 'y', 'z' },
-			{ 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I','J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z' } };
+	char userName[19] = { 0 };
+	char profResponses[4][19] = {"First", "Second", "Third", "Fourth"};
+	char alphabets[2][27] = { { 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v','w', 'x', 'y', 'z', ' ' },
+			{ 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I','J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', ' ' } };
 	/* USER CODE END 1 */
 
 
@@ -133,13 +137,14 @@ int main(void)
 	NRF24_begin(GPIOB, CSpin_Pin, CEpin_Pin, hspi1);
 	nrf24_DebugUART_Init(huart1);
 	printRadioSettings();
-	NRF24_setAutoAck(true);
 	NRF24_setChannel(44);
 	NRF24_setPayloadSize(32);
 	NRF24_openReadingPipe(1, RxPipeAddr);
-	NRF24_enableDynamicPayloads();
-	NRF24_enableAckPayload();
-	NRF24_startListening();
+	NRF24_openWritingPipe(TxPipeAddr);
+	//NRF24_setAutoAck(true);
+	//NRF24_enableDynamicPayloads();
+	//NRF24_enableAckPayload();
+	//NRF24_startListening();
 
 	HAL_TIM_Base_Start(&htim15);
 
@@ -149,31 +154,97 @@ int main(void)
 
 	void resetAll()
 	{
+		ringDelay = 0;
 		Lcd_clear(&lcd);
 		set = false;
 	}
 
-	void receive(){
-		memset(RxBuffer, 0, 32);
+	void txData()
+	{
+		NRF24_stopListening();
 
-
-		if(NRF24_available())
+		if(NRF24_write(TxData, 32))
 		{
-			NRF24_read(RxBuffer, 32);
-			NRF24_writeAckPayload(1, AckResponse, 32);
+			HAL_UART_Transmit(&huart1, (uint8_t *)"\r\nTransmitted Successfully!\r\n", strlen("\r\nTransmitted Successfully!\r\n"), 10);
 
-			RxBuffer[32] = '\r';
-			RxBuffer[32+1] = '\n';
-			HAL_UART_Transmit(&huart1, (uint8_t *)RxBuffer, 32+2, 10);
+			HAL_UART_Transmit(&huart1, (uint8_t *)TxData, strlen(TxData), 10);
+		}else
+		{
+			HAL_UART_Transmit(&huart1, (uint8_t *)"\r\nTransmitted Un-successfully!\r\n", strlen("\r\nTransmitted Un-successfully!\r\n"), 10);
 		}
 	}
 
+	void responseScreen()
+	{
+		while(/*HAL_GetTick() < (ringDelay + 10000)*/ returnKey != 0 && returnKey != 1 && returnKey != 2)
+		{
+			if(!set){
+				Lcd_string(&lcd, "1.");
+				Lcd_string(&lcd, profResponses[0]);
+				Lcd_cursor(&lcd, 1, 0);
+				Lcd_string(&lcd, "2.");
+				Lcd_string(&lcd, profResponses[1]);
+				Lcd_cursor(&lcd, 2, 0);
+				Lcd_string(&lcd, "3.");
+				Lcd_string(&lcd, profResponses[2]);
+				//Lcd_cursor(&lcd, 3, 0);
+				//Lcd_string(&lcd, "4.Dismiss");
+				set = true;
+			}
+
+			returnKey = keypadRead();
+
+			switch (returnKey)
+			{
+			case 0:
+				strcpy(TxData, profResponses[0]);
+				txData();
+				break;
+
+			case 1:
+				strcpy(TxData, profResponses[1]);
+				txData();
+				break;
+
+			case 2:
+				strcpy(TxData, profResponses[2]);
+				txData();
+				break;
+
+			default:
+				//Lcd_string(&lcd, "Wrong");
+				break;
+			}
+		}
+		resetAll();
+	}
+
+	void rxData()
+	{
+		NRF24_startListening();
+
+		if(NRF24_available())
+		{
+			memset(RxData, 0, 34);
+			NRF24_read(RxData, 32);
+
+			RxData[32] = '\r';
+			RxData[32+1] = '\n';
+			HAL_UART_Transmit(&huart1, (uint8_t *)RxData, 32+2, 10);
+
+			resetAll();
+			responseScreen();
+		}
+	}
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	Lcd_clear(&lcd);
 	while (1) {
+
+		memset(TxData, 0, 32);
+
 		//Main menu
 		if (menuState == 1)
 		{
@@ -182,7 +253,10 @@ int main(void)
 				set = true;
 			}
 
-			receive();
+			//resetAll();
+			//responseScreen();
+			rxData();
+
 			returnKey = keypadRead();
 
 			switch (returnKey)
@@ -413,7 +487,7 @@ int main(void)
 		//Name Menu
 		if (menuState == 114)
 		{
-			int8_t alphaRow = 0;
+			int8_t alphaRow = 1;
 			int8_t alphaCol = 0;
 			int8_t namePos = 0;
 			int8_t cursorCol = 1;
@@ -433,14 +507,14 @@ int main(void)
 				//Alphabet Increase
 				case 1:
 					alphaCol++;
-					if(alphaCol > 25)
+					if(alphaCol > 26)
 					{
 						alphaCol = 0;
 					}
 
 					Lcd_cursor(&lcd, 2, cursorCol);
 					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
-					HAL_Delay(300);
+					//HAL_Delay(300);
 					break;
 
 					//Alphabet Caps
@@ -453,7 +527,7 @@ int main(void)
 
 					Lcd_cursor(&lcd, 2, cursorCol);
 					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
-					HAL_Delay(300);
+					//HAL_Delay(300);
 					break;
 
 					//Char parse
@@ -470,12 +544,12 @@ int main(void)
 							cursorCol++;
 						}
 						alphaCol = 0;
-						alphaRow = 1;
+						alphaRow = 0;
 
 						//Move cursor over one and reset alphabet
 						Lcd_cursor(&lcd, 2, cursorCol);
 						Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
-						HAL_Delay(300);
+						//HAL_Delay(300);
 					}else
 					{
 						//Dont let username exceed 18 chars
@@ -495,7 +569,7 @@ int main(void)
 
 					Lcd_cursor(&lcd, 2, cursorCol);
 					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
-					HAL_Delay(300);
+					//HAL_Delay(300);
 					break;
 
 					//Alphabet Decrease
@@ -503,12 +577,12 @@ int main(void)
 					alphaCol--;
 					if(alphaCol < 0)
 					{
-						alphaCol = 25;
+						alphaCol = 26;
 					}
 
 					Lcd_cursor(&lcd, 2, cursorCol);
 					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
-					HAL_Delay(300);
+					//HAL_Delay(300);
 					break;
 
 					//Clear Username
@@ -530,7 +604,7 @@ int main(void)
 					Lcd_string(&lcd, "                    ");
 					Lcd_cursor(&lcd, 2, cursorCol);
 					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
-					HAL_Delay(300);
+					//HAL_Delay(300);
 					break;
 
 					//"Backspace"
@@ -547,7 +621,7 @@ int main(void)
 						Lcd_char(&lcd, ' ');
 						Lcd_cursor(&lcd, 2, cursorCol);
 						Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
-						HAL_Delay(300);
+						//HAL_Delay(300);
 					}
 					break;
 
@@ -563,10 +637,206 @@ int main(void)
 			}while(menuState != 11);
 		}
 
+		//Call Response edit menu
 		if(menuState == 115)
 		{
-			Lcd_cursor(&lcd, 0, 1);
-			Lcd_string(&lcd, "Call Responses...");
+			int8_t alphaRow = 1;
+			int8_t alphaCol = 0;
+			int8_t namePos = 0;
+			int8_t cursorCol = 1;
+			int8_t chosen = -1;
+
+			if(!set)
+			{
+				Lcd_cursor(&lcd, 0, 1);
+				Lcd_string(&lcd, "Choose to edit...");
+				Lcd_cursor(&lcd, 1, 0);
+				Lcd_string(&lcd, "1.");
+				Lcd_string(&lcd, profResponses[0]);
+				Lcd_cursor(&lcd, 2, 0);
+				Lcd_string(&lcd, "2.");
+				Lcd_string(&lcd, profResponses[1]);
+				Lcd_cursor(&lcd, 3, 0);
+				Lcd_string(&lcd, "3.");
+				Lcd_string(&lcd, profResponses[2]);
+				set = true;
+			}
+
+			returnKey = keypadRead();
+
+			switch (returnKey) {
+
+			//Response 1
+			case 0:
+				chosen = 0;
+				resetAll();
+				break;
+
+				//Response 2
+			case 1:
+				chosen = 1;
+				resetAll();
+				break;
+
+				//Response 3
+			case 2:
+				chosen = 2;
+				resetAll();
+				break;
+
+				//Back
+			case 7:
+				menuState = 11;
+				resetAll();
+				break;
+
+			}
+
+			while(chosen != -1){
+
+				if(!set){
+					Lcd_cursor(&lcd, 0, 5);
+					Lcd_string(&lcd, "Response ");
+					Lcd_int(&lcd, chosen + 1);
+					Lcd_cursor(&lcd, 2, 1);
+					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
+					set = true;
+				}
+
+
+				returnKey = keypadRead();
+
+				switch (returnKey) {
+				//Alphabet Increase
+				case 1:
+					alphaCol++;
+					if(alphaCol > 26)
+					{
+						alphaCol = 0;
+					}
+
+					Lcd_cursor(&lcd, 2, cursorCol);
+					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
+					//HAL_Delay(300);
+					break;
+
+					//Alphabet Caps
+				case 4:
+					alphaRow++;
+					if(alphaRow > 1)
+					{
+						alphaRow = 0;
+					}
+
+					Lcd_cursor(&lcd, 2, cursorCol);
+					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
+					//HAL_Delay(300);
+					break;
+
+					//Char parse
+				case 5:
+					if(namePos <= 17)
+					{
+						//Store letter in name array
+						profResponses[chosen][namePos] = alphabets[alphaRow][alphaCol];
+						namePos++;
+
+						//Dont let cursor exceed 18 chars
+						if (cursorCol < 18)
+						{
+							cursorCol++;
+						}
+						alphaCol = 0;
+						alphaRow = 0;
+
+						//Move cursor over one and reset alphabet
+						Lcd_cursor(&lcd, 2, cursorCol);
+						Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
+						//HAL_Delay(300);
+					}else
+					{
+						//Dont let username exceed 18 chars
+						Lcd_cursor(&lcd, 3, 0);
+						Lcd_string(&lcd, "    Max letters!    ");
+						HAL_Delay(750);
+					}
+					break;
+
+					//Alphabet Caps
+				case 6:
+					alphaRow--;
+					if(alphaRow < 0)
+					{
+						alphaRow = 1;
+					}
+
+					Lcd_cursor(&lcd, 2, cursorCol);
+					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
+					//HAL_Delay(300);
+					break;
+
+					//Alphabet Decrease
+				case 9:
+					alphaCol--;
+					if(alphaCol < 0)
+					{
+						alphaCol = 26;
+					}
+
+					Lcd_cursor(&lcd, 2, cursorCol);
+					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
+					//HAL_Delay(300);
+					break;
+
+					//Clear
+				case 11:
+
+					memset(profResponses[chosen], 0, 19);
+
+					alphaRow = 1;
+					alphaCol = 0;
+					namePos = 0;
+					cursorCol = 1;
+
+					Lcd_cursor(&lcd, 3, 0);
+					Lcd_string(&lcd, "                    ");
+
+					Lcd_cursor(&lcd, 2, cursorCol);
+					Lcd_string(&lcd, "                    ");
+					Lcd_cursor(&lcd, 2, cursorCol);
+					Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
+					//HAL_Delay(300);
+					break;
+
+					//"Backspace"
+				case 15:
+					if(namePos > 0)
+					{
+						profResponses[chosen][namePos-1] = ' ';
+						namePos -= 1;
+						cursorCol -= 1;
+						alphaRow = 1;
+						alphaCol = 0;
+
+						Lcd_cursor(&lcd, 2, cursorCol+1);
+						Lcd_char(&lcd, ' ');
+						Lcd_cursor(&lcd, 2, cursorCol);
+						Lcd_char(&lcd, alphabets[alphaRow][alphaCol]);
+						//HAL_Delay(300);
+					}
+					break;
+
+					//Back
+				case 7:
+					menuState = 115;
+					chosen = -1;
+					resetAll();
+					break;
+
+				default:
+					break;
+				}
+			}
 		}
 
 		//Status Menu
